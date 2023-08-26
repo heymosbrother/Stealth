@@ -1,3 +1,8 @@
+// ROS serial libraries
+#include <ros.h>
+#include <std_msgs/Float32.h>
+
+// pin settings
 #define IN1 14
 #define IN2 15
 #define ENA 2
@@ -9,13 +14,31 @@
 long long int ticks = 0;
 // PID variables
 float error, error_prev, error_sum = 0.0;
-float Kp = 1.0, Ki = 0.0, Kd = 0.0;
+float Kp = 0.76, Ki = 0.0, Kd = 0.0;
 // Motor characteristics variables
 float gearRatio = 100.0;
 float encoderResolution = 12.0;
+// ROS serial variables
+float targetAngle = 0.0;
+
+// ROS serial functions
+void targetAngleCallback(const std_msgs::Float32& msg)
+{
+	targetAngle = msg.data;
+}
+// ROS node handle
+ros::NodeHandle nh;
+// Publish messgae
+std_msgs::Float32 motorAngleMsg;
+// Subscriber for the "targetAngle_topic" topic
+ros::Subscriber<std_msgs::Float32> sub("targetAngle_topic", &targetAngleCallback);
+// Publisher for the "motorAngle_topic" topic
+ros::Publisher motor_angle_pub("motorAngle_topic", &motorAngleMsg);
+
 
 void setup()
 {
+	// pin settings
     pinMode(IN1, OUTPUT);
     pinMode(IN2, OUTPUT);
     pinMode(ENA, INPUT);
@@ -23,18 +46,27 @@ void setup()
     pinMode(PWM, OUTPUT);
     pinMode(STB, OUTPUT);
     digitalWrite(STB, HIGH);
-
+	// For tuning PID parameters
     Serial.begin(9600);
     //interrupt setup
     attachInterrupt(digitalPinToInterrupt(ENA), readEncoder, RISING);
 
     // PID setup
     error_prev = 0.0;
+
+	// ROS serial inits
+	nh.initNode();		// Initialize the ROS node
+	nh.subscribe(sub); 	// Subscribe to the "targetAngle_topic" topic
+	nh.advertise(motor_angle_pub);
 }
 
 void loop()
 {
-    PID_position_control(90.0); // rotate 90 degrees
+    PID_position_control(targetAngle); // rotate 90 degrees
+	// Update the current motor angle
+	motorAngleMsg.data = (float)ticks / gearRatio / encoderResolution * 360.0;
+	motor_angle_pub.publish(&motorAngleMsg);	// Publish the current motor angle
+	nh.spinOnce();
 }
 
 // The target value is in the unit of angle
